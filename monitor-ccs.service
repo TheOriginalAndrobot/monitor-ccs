@@ -1,15 +1,20 @@
 [Unit]
-Description=romecast monitoring service
-After=syslog.target
-After=network.target
-After=services-setup.target
+Description=Chromecast monitoring service
+Wants=network-online.target
+After=network-online.target
+
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/monitor-ccs.py
+ExecStart=/home/odroid/automation/monitor-ccs/monitor-ccs.py
+WorkingDirectory=/home/odroid/automation/monitor-ccs
 Restart=always
-User=openhab
-Group=openhab
+User=odroid
+Group=odroid
+
+# Give a reasonable amount of time for the server to start up/shut down
+TimeoutSec=300
+
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

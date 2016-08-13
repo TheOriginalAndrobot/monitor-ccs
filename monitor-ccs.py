@@ -17,6 +17,14 @@ import traceback
 import socket
 import fcntl
 import struct
+import re
+
+#
+# Config parameters
+#
+base_topic = "swalt/chromecast"
+mqtt_ip_addr = "syno"
+
 
 def get_mimetype(filename):
     """ find the container format of the file """
@@ -126,12 +134,19 @@ def getDeviceNamed(name):
 
 def on_mqtt_connect(client, userdata, flags, rc):
 	for device in devices:
-		client.subscribe("chromecast/{0}/command".format(device.name))
+		client.subscribe("{0}/{1}/command".format(base_topic,device.name))
 
 		
 def on_mqtt_message(client, userdata, msg):
 	logger.debug(msg.topic+" "+str(msg.qos)+" "+str(msg.payload))
-	device = msg.topic.split("/")[1]
+
+	pattern = "{0}/([^/]+)/command".format(base_topic)	
+	match = re.match(pattern, msg.topic)
+
+	if not match:
+		return
+
+	device = match.group(1)
 	
 	command = msg.payload.split("|")
 	try:	
@@ -203,7 +218,8 @@ class DeviceStatusUpdater:
 		
 	def addDeviceInfo(self, topic, payload):
 		logger.debug("%s info: %s - %s", str(self.device.name), topic, payload)
-		return {"topic":"chromecast/{0}/{1}".format(str(self.device.name), topic), "payload":payload}
+		#return {"topic":"chromecast/{0}/{1}".format(str(self.device.name), topic), "payload":payload}
+		return {"topic":"{0}/{1}/{2}".format(base_topic, str(self.device.name), topic), "payload":payload}
 	
 	def sendDeviceStatus(self):
 		global publish
@@ -242,17 +258,18 @@ class DeviceStatusUpdater:
 				deviceInfo.append(self.addDeviceInfo("duration", 		duration))
 				
 				if self.thumbnail is not self.device.media_controller.thumbnail and self.device.media_controller.thumbnail is not None:
-					os.system("wget {1} -O /usr/share/openhab/webapps/images/{0}.png".format(self.device.name, self.device.media_controller.thumbnail))
-					#os.system("/usr/bin/convert /usr/share/openhab/webapps/images/{0}.png -resize 128x128 /usr/share/openhab/webapps/images/{0}.png".format(self.device.name))
+					#os.system("wget {1} -O /usr/share/openhab/webapps/images/{0}.png".format(self.device.name, self.device.media_controller.thumbnail))
+					##os.system("/usr/bin/convert /usr/share/openhab/webapps/images/{0}.png -resize 128x128 /usr/share/openhab/webapps/images/{0}.png".format(self.device.name))
 					self.thumbnail = self.device.media_controller.thumbnail
 				
-		publish.multiple(deviceInfo)
+		publish.multiple(deviceInfo, hostname=mqtt_ip_addr)
 
 				
 #logging.basicConfig(filename='/var/log/monitor-ccs.log', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.DEBUG)		
-logging.basicConfig(filename='/var/log/monitor-ccs.log', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
+#logging.basicConfig(filename='/var/log/monitor-ccs.log', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
+logging.basicConfig(filename='monitor-ccs.log', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 logger = logging.getLogger('monitor-ccs')
-		
+
 logger.info("Begin device discovery...")
 devices = pychromecast.get_chromecasts()
 myDevices = []
@@ -266,7 +283,12 @@ for device in devices:
 client = mqtt.Client()
 client.on_connect = on_mqtt_connect
 client.on_message = on_mqtt_message
-client.connect("localhost")
+client.connect(mqtt_ip_addr)
 logger.info("MQTT connect...")
-client.loop_forever()	
+
+try:
+	client.loop_forever()
+except KeyboardInterrupt:
+	print("  Caught keyboard interrupt, quitting...")
+
 client.disconnect()	
